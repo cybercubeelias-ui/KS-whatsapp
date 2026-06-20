@@ -1,0 +1,66 @@
+# SAME CODE AS app.py ABOVE BUT USE THIS WEBHOOK SECTION:
+import os
+from flask import Flask, request
+from twilio.twiml.messaging_response import MessagingResponse
+import sqlite3
+import random
+from groq import Groq
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+app = Flask(__name__)
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+ECOCASH_NUMBER = "0780554072"
+ADMIN_NUMBERS = ["0780554072", "0710990619", "whatsapp:+263780554072", "whatsapp:+263710990619"]
+TZ = ZoneInfo("Africa/Harare")
+LAUNCH_DATE = datetime(2026, 6, 21, 12, 0, 0, tzinfo=TZ)
+FREE_END_DATE = LAUNCH_DATE + timedelta(days=30)
+DB_FILE = "/tmp/kingsmoke_users.db"
+DAILY_LIMIT = 5
+PRICE_TIERS = {1: 10, 2: 50, 3: 100, 4: 99999}
+OFFLINE_ROASTS = ["Wakafanana neWiFi yeTelOne - unobatika but haushande 💨👑","Face yako yakaita seZESA load shedding - unpredictable 💨👑","Unonhuwirira secombi yeMbare mangwanani 💨👑","Brain yako ine 2G network - slow but trying 💨👑","Wakavakwa neleftovers dze creation 💨👑"]
+
+# PASTE ALL FUNCTIONS FROM app.py HERE: init_db, log_payment, add_credits, get_user_credits, use_one_credit, check_free_daily_limit, increment_free_usage, get_sales_report, get_top_customers, get_user_stats, get_reply
+
+init_db()
+
+@app.route("/webhook", methods=['POST'])
+def webhook():
+    incoming_msg = request.values.get('Body', '').strip()
+    from_number = request.values.get('From', '')
+    today = datetime.now(TZ)
+    resp = MessagingResponse()
+    msg = resp.message()
+
+    # PASTE ALL ADMIN COMMANDS FROM chat() FUNCTION HERE, BUT CHANGE return to msg.body()
+    # EXAMPLE:
+    if incoming_msg.upper().startswith("ADMIN ADD"):
+        parts = incoming_msg.split()
+        if from_number in ADMIN_NUMBERS and len(parts) == 4:
+            amount = int(parts[3].replace("$", ""))
+            add_credits(parts[2], amount)
+            msg.body(f"✅ Added ${amount} to {parts[2]} 💨👑")
+            return str(resp)
+
+    # PASTE REST OF LOGIC FROM chat() HERE
+    credits, unlimited = get_user_credits(from_number)
+    paid_msg = False
+    if unlimited or credits > 0:
+        if use_one_credit(from_number): paid_msg = True
+    if not paid_msg:
+        if today <= FREE_END_DATE and check_free_daily_limit(from_number):
+            increment_free_usage(from_number)
+        else:
+            msg.body(f"🔒 No credits\nPay ${ECOCASH_NUMBER}\n$1=10|$2=50|$3=100|$4=Unlimited 💨👑")
+            return str(resp)
+
+    reply = get_reply(incoming_msg)
+    credits_left, unlimited = get_user_credits(from_number)
+    if unlimited: status = f"👑 UNLIMITED"
+    elif credits_left > 0: status = f"💰 Credits: {credits_left}"
+    else: status = f"💨 FREE"
+    msg.body(reply + f"\n\n{status} 💨👑")
+    return str(resp)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
